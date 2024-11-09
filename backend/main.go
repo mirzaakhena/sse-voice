@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 )
 
 type AudioEvent struct {
@@ -30,6 +31,13 @@ func main() {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+			// Tambahkan header khusus untuk SSE
+			if r.URL.Path == "/sse" {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.Header().Set("Cache-Control", "no-cache")
+				w.Header().Set("Connection", "keep-alive")
+				w.Header().Set("X-Accel-Buffering", "no") // Untuk NGINX
+			}
 
 			if r.Method == "OPTIONS" {
 				w.WriteHeader(http.StatusOK)
@@ -51,11 +59,6 @@ func main() {
 }
 
 func handleSSE(w http.ResponseWriter, r *http.Request) {
-	// Set SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-
 	// Create a new client channel
 	events := make(chan AudioEvent)
 	clients[events] = true
@@ -66,7 +69,26 @@ func handleSSE(w http.ResponseWriter, r *http.Request) {
 		close(events)
 	}()
 
-	// Keep connection alive
+	// Send initial connection message
+	fmt.Fprintf(w, "event: connected\ndata: Connected to SSE server\n\n")
+	w.(http.Flusher).Flush()
+
+	// Start heartbeat goroutine
+	go func() {
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			default:
+				// Send heartbeat every 15 seconds
+				fmt.Fprintf(w, "event: heartbeat\ndata: ping\n\n")
+				w.(http.Flusher).Flush()
+				time.Sleep(15 * time.Second)
+			}
+		}
+	}()
+
+	// Keep connection alive and handle events
 	for {
 		select {
 		case event := <-events:
@@ -106,8 +128,8 @@ func handlePlay(w http.ResponseWriter, r *http.Request) {
 			client <- event
 		}
 
-		// Add delay between files
-		// time.Sleep(500 * time.Millisecond)
+		// Add small delay between files to prevent overwhelming the client
+		time.Sleep(100 * time.Millisecond)
 	}
 
 	w.WriteHeader(http.StatusOK)

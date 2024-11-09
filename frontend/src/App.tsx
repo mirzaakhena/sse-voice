@@ -1,11 +1,11 @@
 import './App.css'
-import AudioPlayer from './components/AudioPlayer'
+import VoiceControlledPlayer from './components/VoiceControlledPlayer'
 
 function App() {
   return (
     <>
-      <AudioPlayer serverUrl="http://localhost:8080" />
-    </>
+      <VoiceControlledPlayer ></VoiceControlledPlayer>
+    </> 
   )
 }
 
